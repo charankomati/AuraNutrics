@@ -1,0 +1,216 @@
+import React, { useEffect, useState } from 'react';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Cell } from 'recharts';
+import { Activity, Zap, Heart, ShieldCheck, History, Trash2 } from 'lucide-react';
+import { motion } from 'motion/react';
+
+const data = [
+  { name: 'Mon', intake: 1800, metabolic: 1600 },
+  { name: 'Tue', intake: 2100, metabolic: 1750 },
+  { name: 'Wed', intake: 1950, metabolic: 1800 },
+  { name: 'Thu', intake: 2400, metabolic: 1900 },
+  { name: 'Fri', intake: 2200, metabolic: 1850 },
+  { name: 'Sat', intake: 2600, metabolic: 2100 },
+  { name: 'Sun', intake: 2000, metabolic: 1700 },
+];
+
+const micronutrients = [
+  { name: 'Vit A', value: 85, color: '#5A5A40' },
+  { name: 'Iron', value: 62, color: '#8E8D8A' },
+  { name: 'Zinc', value: 92, color: '#D4AF37' },
+  { name: 'Calcium', value: 74, color: '#1A1A1A' },
+];
+
+interface DashboardProps {
+  searchQuery?: string;
+  onIntervention?: (title: string, type: string) => void;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ searchQuery = '', onIntervention }) => {
+  const [meals, setMeals] = useState<any[]>([]);
+  const [biometrics, setBiometrics] = useState<any>(null);
+  const [recentInterventions, setRecentInterventions] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchInterventions();
+  }, []);
+
+  const fetchInterventions = async () => {
+    const res = await fetch('/api/interventions');
+    const data = await res.json();
+    setRecentInterventions(data);
+  };
+  const fetchMeals = async () => {
+    const res = await fetch(`/api/meals?search=${encodeURIComponent(searchQuery)}`);
+    const data = await res.json();
+    setMeals(data);
+  };
+
+  const deleteMeal = async (id: number) => {
+    if (!confirm("Are you sure you want to remove this record?")) return;
+    try {
+      await fetch(`/api/meals/${id}`, { method: 'DELETE' });
+      fetchMeals();
+    } catch (error) {
+      console.error("Failed to delete meal:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchMeals();
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const fetchBiometrics = async () => {
+      const res = await fetch('/api/biometrics');
+      const data = await res.json();
+      setBiometrics(data);
+    };
+    fetchBiometrics();
+    const interval = setInterval(fetchBiometrics, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="space-y-8">
+      {/* Hero Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {[
+          { label: 'Metabolic Efficiency', value: '94%', icon: Zap, color: 'text-emerald-600' },
+          { label: 'Nutrient Density', value: 'A-', icon: ShieldCheck, color: 'text-aura-accent' },
+          { label: 'Heart Rate (Avg)', value: biometrics ? `${biometrics.heartRate} bpm` : '72 bpm', icon: Heart, color: 'text-rose-500' },
+          { label: 'Active Burn', value: biometrics ? `${biometrics.metabolicRate} kcal` : '1450 kcal', icon: Activity, color: 'text-blue-500' },
+        ].map((stat, i) => (
+          <motion.div 
+            key={stat.label}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.1 }}
+            className="luxury-card flex flex-col justify-between"
+          >
+            <div className="flex justify-between items-start">
+              <stat.icon className={stat.color} size={24} />
+              <span className="text-[10px] uppercase tracking-widest text-aura-muted font-bold">Live Sync</span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-2xl font-serif">{stat.value}</h3>
+              <p className="text-xs text-aura-muted uppercase tracking-wider">{stat.label}</p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Main Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="luxury-card">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-2xl font-serif">Metabolic Correlation</h2>
+            <div className="flex space-x-4 text-[10px] uppercase tracking-widest font-bold">
+              <span className="flex items-center"><span className="w-2 h-2 rounded-full bg-aura-accent mr-2"></span> Intake</span>
+              <span className="flex items-center"><span className="w-2 h-2 rounded-full bg-aura-muted mr-2"></span> Demand</span>
+            </div>
+          </div>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data}>
+                <defs>
+                  <linearGradient id="colorIntake" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#5A5A40" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#5A5A40" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#8E8D8A'}} />
+                <YAxis hide />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#141718', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}
+                  itemStyle={{ color: '#F5F2ED' }}
+                />
+                <Area type="monotone" dataKey="intake" stroke="#C5A059" fillOpacity={1} fill="url(#colorIntake)" strokeWidth={2} />
+                <Area type="monotone" dataKey="metabolic" stroke="#8E8D8A" fill="transparent" strokeWidth={2} strokeDasharray="5 5" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="luxury-card">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-2xl font-serif">Meal History</h2>
+            <History className="text-aura-muted" size={20} />
+          </div>
+          <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+            {meals.length > 0 ? meals.map((meal, i) => (
+              <div key={meal.id} className="flex items-center justify-between p-4 rounded-2xl bg-aura-bg/30 border border-white/5">
+                <div>
+                  <p className="font-serif text-lg">{meal.food_name}</p>
+                  <p className="text-[10px] uppercase tracking-widest text-aura-muted">{new Date(meal.created_at).toLocaleDateString()}</p>
+                </div>
+                <div className="flex items-center">
+                  <div className="text-right">
+                    <p className="text-sm font-bold">{meal.calories} kcal</p>
+                    <p className="text-[10px] uppercase tracking-widest text-aura-gold font-bold">{meal.risk}</p>
+                  </div>
+                  <button 
+                    onClick={() => deleteMeal(meal.id)}
+                    className="ml-4 p-2 text-aura-muted hover:text-rose-500 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <div className="h-full flex flex-col items-center justify-center text-aura-muted py-12">
+                <History size={48} strokeWidth={1} className="mb-2 opacity-20" />
+                <p className="text-sm italic">No ingestion history recorded yet.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Predictive Insights */}
+      <div className="luxury-card bg-aura-accent text-white border-aura-gold/20">
+        <div className="flex items-start justify-between">
+          <div className="space-y-4 max-w-2xl">
+            <div className="inline-block px-3 py-1 rounded-full bg-white/10 text-[10px] uppercase tracking-widest font-bold text-aura-gold">AI Predictive Engine</div>
+            <h2 className="text-4xl font-serif">Latent Deficiency Alert</h2>
+            <p className="text-white/60 leading-relaxed italic">
+              "Current metabolic trends suggest a potential sub-clinical Vitamin D deficiency within the next 14 days if intake patterns persist. Recommended micro-intervention: Increase fatty fish or fortified dairy intake by 15%."
+            </p>
+            <button 
+              onClick={() => onIntervention?.("Vitamin D Optimization", "Nutritional")}
+              className="mt-4 px-8 py-3 rounded-full bg-aura-gold text-aura-bg text-xs uppercase tracking-widest font-bold hover:bg-aura-ink hover:text-aura-bg transition-all duration-500 shadow-xl shadow-aura-gold/20"
+            >
+              Apply Micro-Intervention
+            </button>
+          </div>
+          <div className="hidden lg:block">
+            <div className="w-32 h-32 rounded-full border border-white/20 flex items-center justify-center relative">
+              <div className="absolute inset-0 animate-pulse bg-aura-gold/20 rounded-full blur-xl"></div>
+              <ShieldCheck size={48} className="text-aura-gold" />
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Recent Interventions */}
+      {recentInterventions.length > 0 && (
+        <div className="luxury-card">
+          <div className="flex items-center gap-3 mb-6">
+            <ShieldCheck className="text-aura-accent" size={24} />
+            <h2 className="text-2xl font-serif">Active Interventions</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {recentInterventions.map(item => (
+              <div key={item.id} className="p-4 rounded-xl bg-aura-bg border border-aura-ink/5 flex justify-between items-center">
+                <div>
+                  <p className="font-bold text-sm">{item.title}</p>
+                  <p className="text-[10px] uppercase tracking-widest text-aura-muted">{item.type}</p>
+                </div>
+                <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[8px] uppercase font-bold">{item.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
