@@ -1,38 +1,25 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Shield, Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
+import { Shield, ArrowRight, Loader2 } from 'lucide-react';
+import { auth, googleProvider, signInWithPopup } from '../firebase';
 
 interface LoginPageProps {
   onLogin: (user: any) => void;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGoogleLogin = async () => {
     setIsLoading(true);
     setError(null);
-
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        onLogin(data.user);
-      } else {
-        setError(data.message);
-      }
-    } catch (err) {
-      setError("Connection failed. Please try again.");
+      await signInWithPopup(auth, googleProvider);
+      // onAuthStateChanged in App.tsx will handle the rest
+    } catch (err: any) {
+      console.error("Login failed:", err);
+      setError(err.message || "Login failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -58,36 +45,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           <p className="text-aura-muted uppercase tracking-[0.2em] text-[10px] font-bold">Predictive Health Intelligence</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-aura-muted ml-4">Email Address</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-aura-muted" size={18} />
-              <input 
-                type="email" 
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                className="w-full pl-12 pr-6 py-4 rounded-2xl bg-aura-bg/50 border border-aura-ink/5 focus:outline-none focus:ring-2 focus:ring-aura-accent/20 transition-all"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[10px] uppercase tracking-widest font-bold text-aura-muted ml-4">Access Key</label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-aura-muted" size={18} />
-              <input 
-                type="password" 
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-12 pr-6 py-4 rounded-2xl bg-aura-bg/50 border border-aura-ink/5 focus:outline-none focus:ring-2 focus:ring-aura-accent/20 transition-all"
-              />
-            </div>
-          </div>
+        <div className="space-y-6">
+          <p className="text-center text-aura-muted text-sm italic">
+            "Access your personalized metabolic ecosystem with secure biometric authentication."
+          </p>
 
           {error && (
             <motion.p 
@@ -100,20 +61,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           )}
 
           <button 
-            type="submit"
+            onClick={handleGoogleLogin}
             disabled={isLoading}
-            className="w-full py-4 rounded-full bg-aura-ink text-white text-xs uppercase tracking-widest font-bold hover:bg-aura-accent transition-all duration-500 flex items-center justify-center space-x-2 group disabled:opacity-50"
+            className="w-full py-4 rounded-full bg-aura-ink text-white text-xs uppercase tracking-widest font-bold hover:bg-aura-accent transition-all duration-500 flex items-center justify-center space-x-3 group disabled:opacity-50"
           >
             {isLoading ? (
               <Loader2 className="animate-spin" size={18} />
             ) : (
               <>
-                <span>Initialize Session</span>
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" referrerPolicy="no-referrer" />
+                <span>Initialize with Google</span>
                 <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </>
             )}
           </button>
-        </form>
+        </div>
 
         <div className="mt-12 pt-8 border-t border-aura-ink/5 flex items-center justify-center space-x-4">
           <Shield size={16} className="text-aura-muted" />

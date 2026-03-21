@@ -8,11 +8,12 @@ import { LoginPage } from './components/LoginPage';
 import { UserProfile } from './components/UserProfile';
 import { AuraAI } from './components/AuraAI';
 import { NutritionalAnalysis } from './services/geminiService';
+import { auth, db, onAuthStateChanged, signOut, collection, query, where, onSnapshot, FirebaseUser, handleFirestoreError, OperationType, setDoc, doc, serverTimestamp } from './firebase';
 
 type View = 'dashboard' | 'vision' | 'ai' | 'admin' | 'profile';
 
 export default function App() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [lastAnalysis, setLastAnalysis] = useState<NutritionalAnalysis | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -21,44 +22,66 @@ export default function App() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({ age_group: 'pediatric' });
   const [toast, setToast] = useState<string | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      fetchNotifications();
-      fetchSettings();
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      setIsAuthReady(true);
+      if (firebaseUser) {
+        showToast(`Welcome back, ${firebaseUser.displayName || 'User'}`);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user && isAuthReady) {
+      // Fetch Notifications
+      const q = query(collection(db, 'notifications'), where('uid', '==', user.uid));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setNotifications(data);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'notifications');
+      });
+
+      // Fetch Settings (from user profile or a settings collection)
+      const settingsRef = doc(db, 'user_profiles', user.uid);
+      const unsubscribeSettings = onSnapshot(settingsRef, (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          setSettings({ age_group: data.age_group || 'pediatric' });
+        }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, `user_profiles/${user.uid}`);
+      });
+
+      return () => {
+        unsubscribe();
+        unsubscribeSettings();
+      };
     }
-  }, [user]);
+  }, [user, isAuthReady]);
 
-  const handleLogin = (userData: any) => {
-    setUser(userData);
-    showToast(`Welcome back, ${userData.name}`);
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    showToast("Session terminated.");
-  };
-
-  const fetchNotifications = async () => {
-    const res = await fetch('/api/notifications');
-    const data = await res.json();
-    setNotifications(data);
-  };
-
-  const fetchSettings = async () => {
-    const res = await fetch('/api/settings');
-    const data = await res.json();
-    setSettings(data);
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      showToast("Session terminated.");
+    } catch (error) {
+      showToast("Logout failed.");
+    }
   };
 
   const handleUpdateSettings = async (key: string, value: string) => {
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value })
-    });
-    fetchSettings();
-    showToast(`Settings updated: ${key} set to ${value}`);
+    if (!user) return;
+    try {
+      const profileRef = doc(db, 'user_profiles', user.uid);
+      await setDoc(profileRef, { [key]: value, updated_at: serverTimestamp() }, { merge: true });
+      showToast(`Settings updated: ${key} set to ${value}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `user_profiles/${user.uid}`);
+    }
   };
 
   const showToast = (message: string) => {
@@ -67,47 +90,77 @@ export default function App() {
   };
 
   const markNotificationsRead = async () => {
-    await fetch('/api/notifications/read', { method: 'POST' });
-    fetchNotifications();
+    if (!user) return;
+    try {
+      const unreadNotifications = notifications.filter(n => !n.is_read);
+      for (const n of unreadNotifications) {
+        const nRef = doc(db, 'notifications', n.id);
+        await setDoc(nRef, { is_read: true }, { merge: true });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'notifications');
+    }
   };
 
   const handleAnalysisComplete = async (analysis: NutritionalAnalysis) => {
+    if (!user) return;
     setLastAnalysis(analysis);
     setActiveView('dashboard');
     
-    // Persist to backend
     try {
-      await fetch('/api/meals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(analysis)
+      const mealRef = doc(collection(db, 'meals'));
+      await setDoc(mealRef, {
+        ...analysis,
+        uid: user.uid,
+        created_at: serverTimestamp()
       });
-      fetchNotifications();
+
+      // Auto-generate notification for high risk
+      if (analysis.predictiveRisk.toLowerCase().includes("high") || analysis.predictiveRisk.toLowerCase().includes("deficiency")) {
+        const nRef = doc(collection(db, 'notifications'));
+        await setDoc(nRef, {
+          uid: user.uid,
+          title: "Nutritional Risk",
+          message: `High risk detected in recent ingestion: ${analysis.foodName}`,
+          type: "warning",
+          is_read: false,
+          created_at: serverTimestamp()
+        });
+      }
+
       showToast("Meal analysis saved successfully.");
     } catch (error) {
-      console.error("Failed to save meal", error);
+      handleFirestoreError(error, OperationType.CREATE, 'meals');
       showToast("Error saving meal analysis.");
     }
   };
 
   const handleIntervention = async (title: string, type: string) => {
+    if (!user) return;
     try {
-      await fetch('/api/interventions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, type })
+      const intRef = doc(collection(db, 'interventions'));
+      await setDoc(intRef, {
+        uid: user.uid,
+        title,
+        type,
+        status: "Active",
+        created_at: serverTimestamp()
       });
       showToast(`Applied: ${title}`);
-      // Refresh dashboard data if needed, but the component fetches its own
     } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'interventions');
       showToast("Failed to apply intervention.");
     }
   };
 
+  if (!isAuthReady) {
+    return <div className="min-h-screen bg-aura-bg flex items-center justify-center"><Sparkles className="animate-pulse text-aura-gold" size={48} /></div>;
+  }
+
   if (!user) {
     return (
       <>
-        <LoginPage onLogin={handleLogin} />
+        <LoginPage onLogin={() => {}} />
         <AnimatePresence>
           {toast && (
             <motion.div 
@@ -225,7 +278,7 @@ export default function App() {
               className="flex items-center space-x-4 pl-6 border-l border-aura-ink/10 cursor-pointer group"
             >
               <div className="text-right">
-                <p className="text-sm font-semibold group-hover:text-aura-gold transition-colors">{user.name}</p>
+                <p className="text-sm font-semibold group-hover:text-aura-gold transition-colors">{user.displayName || 'User'}</p>
                 <p className="text-[10px] uppercase tracking-widest text-aura-muted font-bold">Premium Tier</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-aura-accent/20 flex items-center justify-center text-aura-gold group-hover:bg-aura-gold group-hover:text-aura-bg transition-all">
@@ -248,7 +301,7 @@ export default function App() {
             {activeView === 'vision' && <VisionIngestion onAnalysisComplete={handleAnalysisComplete} />}
             {activeView === 'ai' && <AuraAI />}
             {activeView === 'admin' && <AdminCenter onExport={() => showToast("Dataset exported to secure cloud storage.")} />}
-            {activeView === 'profile' && <UserProfile onUpdate={(name) => setUser({ ...user, name })} showToast={showToast} />}
+            {activeView === 'profile' && <UserProfile onUpdate={() => {}} showToast={showToast} />}
           </motion.div>
         </AnimatePresence>
 

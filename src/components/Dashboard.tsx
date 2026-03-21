@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Cell } from 'recharts';
-import { Activity, Zap, Heart, ShieldCheck, History, Trash2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Activity, Zap, Heart, ShieldCheck, History, Trash2, Calendar, Filter } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { auth, db, collection, query, where, onSnapshot, orderBy, limit, deleteDoc, doc, handleFirestoreError, OperationType, Timestamp } from '../firebase';
 
 const data = [
   { name: 'Mon', intake: 1800, metabolic: 1600 },
@@ -29,41 +30,112 @@ export const Dashboard: React.FC<DashboardProps> = ({ searchQuery = '', onInterv
   const [meals, setMeals] = useState<any[]>([]);
   const [biometrics, setBiometrics] = useState<any>(null);
   const [recentInterventions, setRecentInterventions] = useState<any[]>([]);
+  const [interventionTypes, setInterventionTypes] = useState<any[]>([]);
+  
+  // Date filtering state
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
-    fetchInterventions();
+    const user = auth.currentUser;
+    if (!user) return;
+
+    // Fetch Interventions
+    const intQuery = query(
+      collection(db, 'interventions'),
+      where('uid', '==', user.uid),
+      orderBy('created_at', 'desc'),
+      limit(5)
+    );
+
+    const unsubscribeInt = onSnapshot(intQuery, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setRecentInterventions(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'interventions');
+    });
+
+    // Fetch Intervention Types
+    const unsubscribeTypes = onSnapshot(collection(db, 'intervention_types'), (snapshot) => {
+      setInterventionTypes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'intervention_types');
+    });
+
+    return () => {
+      unsubscribeInt();
+      unsubscribeTypes();
+    };
   }, []);
 
-  const fetchInterventions = async () => {
-    const res = await fetch('/api/interventions');
-    const data = await res.json();
-    setRecentInterventions(data);
-  };
-  const fetchMeals = async () => {
-    const res = await fetch(`/api/meals?search=${encodeURIComponent(searchQuery)}`);
-    const data = await res.json();
-    setMeals(data);
-  };
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
 
-  const deleteMeal = async (id: number) => {
+    // Fetch Meals
+    let constraints: any[] = [
+      where('uid', '==', user.uid),
+      orderBy('created_at', 'desc'),
+      limit(50)
+    ];
+
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      constraints.push(where('created_at', '>=', Timestamp.fromDate(start)));
+    }
+
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      constraints.push(where('created_at', '<=', Timestamp.fromDate(end)));
+    }
+
+    const mealsQuery = query(
+      collection(db, 'meals'),
+      ...constraints
+    );
+
+    const unsubscribeMeals = onSnapshot(mealsQuery, (snapshot) => {
+      let data = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data(),
+        created_at: (doc.data() as any).created_at?.toDate()?.toISOString() || new Date().toISOString()
+      })) as any[];
+
+      if (searchQuery) {
+        data = data.filter(m => 
+          m.foodName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.predictiveRisk?.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+
+      setMeals(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'meals');
+    });
+
+    return () => unsubscribeMeals();
+  }, [searchQuery, startDate, endDate]);
+
+  const deleteMeal = async (id: string) => {
     if (!confirm("Are you sure you want to remove this record?")) return;
     try {
-      await fetch(`/api/meals/${id}`, { method: 'DELETE' });
-      fetchMeals();
+      await deleteDoc(doc(db, 'meals', id));
     } catch (error) {
-      console.error("Failed to delete meal:", error);
+      handleFirestoreError(error, OperationType.DELETE, `meals/${id}`);
     }
   };
 
   useEffect(() => {
-    fetchMeals();
-  }, [searchQuery]);
-
-  useEffect(() => {
+    // Keep biometrics as mock for now or fetch from a service
     const fetchBiometrics = async () => {
-      const res = await fetch('/api/biometrics');
-      const data = await res.json();
-      setBiometrics(data);
+      // Mock biometrics
+      setBiometrics({
+        heartRate: 68 + Math.floor(Math.random() * 10),
+        metabolicRate: 1400 + Math.floor(Math.random() * 200)
+      });
     };
     fetchBiometrics();
     const interval = setInterval(fetchBiometrics, 5000);
@@ -133,21 +205,74 @@ export const Dashboard: React.FC<DashboardProps> = ({ searchQuery = '', onInterv
         </div>
 
         <div className="luxury-card">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-serif">Meal History</h2>
-            <History className="text-aura-muted" size={20} />
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center space-x-3">
+              <History className="text-aura-accent" size={20} />
+              <h2 className="text-2xl font-serif">Meal History</h2>
+            </div>
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`p-2 rounded-full transition-all ${showFilters ? 'bg-aura-gold text-aura-bg' : 'text-aura-muted hover:bg-aura-ink/5'}`}
+            >
+              <Filter size={18} />
+            </button>
           </div>
-          <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden mb-6"
+              >
+                <div className="grid grid-cols-2 gap-4 p-4 rounded-2xl bg-aura-bg/50 border border-aura-ink/5">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-aura-muted flex items-center">
+                      <Calendar size={10} className="mr-1" /> Start Date
+                    </label>
+                    <input 
+                      type="date" 
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full bg-transparent border-none text-xs focus:ring-0 p-0 text-aura-ink"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-aura-muted flex items-center">
+                      <Calendar size={10} className="mr-1" /> End Date
+                    </label>
+                    <input 
+                      type="date" 
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full bg-transparent border-none text-xs focus:ring-0 p-0 text-aura-ink"
+                    />
+                  </div>
+                  {(startDate || endDate) && (
+                    <button 
+                      onClick={() => { setStartDate(''); setEndDate(''); }}
+                      className="col-span-2 text-[10px] uppercase tracking-widest font-bold text-rose-500 hover:text-rose-600 text-center mt-2"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
             {meals.length > 0 ? meals.map((meal, i) => (
               <div key={meal.id} className="flex items-center justify-between p-4 rounded-2xl bg-aura-bg/30 border border-white/5">
                 <div>
-                  <p className="font-serif text-lg">{meal.food_name}</p>
+                  <p className="font-serif text-lg">{meal.foodName}</p>
                   <p className="text-[10px] uppercase tracking-widest text-aura-muted">{new Date(meal.created_at).toLocaleDateString()}</p>
                 </div>
                 <div className="flex items-center">
                   <div className="text-right">
                     <p className="text-sm font-bold">{meal.calories} kcal</p>
-                    <p className="text-[10px] uppercase tracking-widest text-aura-gold font-bold">{meal.risk}</p>
+                    <p className="text-[10px] uppercase tracking-widest text-aura-gold font-bold">{meal.predictiveRisk}</p>
                   </div>
                   <button 
                     onClick={() => deleteMeal(meal.id)}
@@ -174,14 +299,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ searchQuery = '', onInterv
             <div className="inline-block px-3 py-1 rounded-full bg-white/10 text-[10px] uppercase tracking-widest font-bold text-aura-gold">AI Predictive Engine</div>
             <h2 className="text-4xl font-serif">Latent Deficiency Alert</h2>
             <p className="text-white/60 leading-relaxed italic">
-              "Current metabolic trends suggest a potential sub-clinical Vitamin D deficiency within the next 14 days if intake patterns persist. Recommended micro-intervention: Increase fatty fish or fortified dairy intake by 15%."
+              {interventionTypes.length > 0 
+                ? `"${interventionTypes[0].description}"`
+                : `"Current metabolic trends suggest a potential sub-clinical Vitamin D deficiency within the next 14 days if intake patterns persist. Recommended micro-intervention: Increase fatty fish or fortified dairy intake by 15%."`
+              }
             </p>
-            <button 
-              onClick={() => onIntervention?.("Vitamin D Optimization", "Nutritional")}
-              className="mt-4 px-8 py-3 rounded-full bg-aura-gold text-aura-bg text-xs uppercase tracking-widest font-bold hover:bg-aura-ink hover:text-aura-bg transition-all duration-500 shadow-xl shadow-aura-gold/20"
-            >
-              Apply Micro-Intervention
-            </button>
+            <div className="flex flex-wrap gap-4 mt-4">
+              {interventionTypes.length > 0 ? (
+                interventionTypes.slice(0, 2).map(type => (
+                  <button 
+                    key={type.id}
+                    onClick={() => onIntervention?.(type.name, type.name)}
+                    className="px-8 py-3 rounded-full bg-aura-gold text-aura-bg text-xs uppercase tracking-widest font-bold hover:bg-aura-ink hover:text-aura-bg transition-all duration-500 shadow-xl shadow-aura-gold/20"
+                  >
+                    Apply {type.name}
+                  </button>
+                ))
+              ) : (
+                <button 
+                  onClick={() => onIntervention?.("Vitamin D Optimization", "Nutritional")}
+                  className="px-8 py-3 rounded-full bg-aura-gold text-aura-bg text-xs uppercase tracking-widest font-bold hover:bg-aura-ink hover:text-aura-bg transition-all duration-500 shadow-xl shadow-aura-gold/20"
+                >
+                  Apply Micro-Intervention
+                </button>
+              )}
+            </div>
           </div>
           <div className="hidden lg:block">
             <div className="w-32 h-32 rounded-full border border-white/20 flex items-center justify-center relative">

@@ -1,0 +1,133 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Biometric and metabolic data for a user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique identifier of the user." },
+        "name": { "type": "string", "description": "Full name of the user." },
+        "age": { "type": "integer", "description": "Age of the user." },
+        "weight": { "type": "number", "description": "Weight in kg." },
+        "height": { "type": "number", "description": "Height in cm." },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "activity_level": { "type": "string", "enum": ["Sedentary", "Light", "Moderate", "Active", "Very Active"] },
+        "goal": { "type": "string", "description": "Primary health goal." },
+        "diet_type": { "type": "string", "enum": ["Balanced", "Vegetarian", "Vegan", "Ketogenic", "Paleo", "Mediterranean"] },
+        "allergies": { "type": "string", "description": "Known allergies." },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "age", "weight", "height", "gender"]
+    },
+    "Meal": {
+      "title": "Meal Ingestion",
+      "description": "A recorded meal with nutritional analysis.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique identifier of the user." },
+        "foodName": { "type": "string" },
+        "calories": { "type": "number" },
+        "protein": { "type": "number" },
+        "carbs": { "type": "number" },
+        "fat": { "type": "number" },
+        "healthInsights": { "type": "string" },
+        "predictiveRisk": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "foodName", "calories", "created_at"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System or health alert for the user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "error"] },
+        "is_read": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "title", "message", "type", "is_read", "created_at"]
+    },
+    "Intervention": {
+      "title": "Intervention",
+      "description": "An active health optimization applied by the user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Completed"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "title", "type", "status", "created_at"]
+    },
+    "Cohort": {
+      "title": "Cohort",
+      "description": "Aggregated data for a population group.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "deficiency_risk": { "type": "number" },
+        "metabolic_efficiency": { "type": "number" }
+      },
+      "required": ["name", "deficiency_risk", "metabolic_efficiency"]
+    },
+    "RDABenchmark": {
+      "title": "RDA Benchmark",
+      "description": "Recommended Daily Allowance for a specific nutrient and age group.",
+      "type": "object",
+      "properties": {
+        "age_group": { "type": "string" },
+        "nutrient": { "type": "string" },
+        "value": { "type": "number" },
+        "rda": { "type": "number" },
+        "unit": { "type": "string" }
+      },
+      "required": ["age_group", "nutrient", "value", "rda", "unit"]
+    },
+    "InterventionType": {
+      "title": "Intervention Type",
+      "description": "A custom type of health intervention defined by an admin.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the intervention type (e.g., 'Nutritional', 'Exercise')." },
+        "description": { "type": "string", "description": "A detailed description of the intervention type." },
+        "target_metrics": { "type": "array", "items": { "type": "string" }, "description": "Metrics targeted by this intervention (e.g., 'Calories', 'Heart Rate')." },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "description", "target_metrics", "created_at"]
+    }
+  },
+  "firestore": {
+    "/user_profiles/{userId}": {
+      "schema": "UserProfile",
+      "description": "Individual user profile data."
+    },
+    "/meals/{mealId}": {
+      "schema": "Meal",
+      "description": "Collection of all meals, filtered by uid."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Collection of all notifications, filtered by uid."
+    },
+    "/interventions/{interventionId}": {
+      "schema": "Intervention",
+      "description": "Collection of all interventions, filtered by uid."
+    },
+    "/cohorts/{cohortId}": {
+      "schema": "Cohort",
+      "description": "Global cohort analytics data."
+    },
+    "/rda_standards/{rdaId}": {
+      "schema": "RDABenchmark",
+      "description": "Global RDA standards data."
+    },
+    "/intervention_types/{typeId}": {
+      "schema": "InterventionType",
+      "description": "Global collection of custom intervention types managed by admins."
+    }
+  }
+}

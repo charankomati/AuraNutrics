@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { User, Scale, Ruler, Activity, Target, Save, Loader2, Utensils, AlertTriangle, Zap, Heart, Brain, Edit3 } from 'lucide-react';
+import { auth, db, doc, onSnapshot, setDoc, serverTimestamp, handleFirestoreError, OperationType } from '../firebase';
 
 interface ProfileData {
   name: string;
@@ -13,6 +14,7 @@ interface ProfileData {
   allergies: string;
   goal: string;
   updated_at: string;
+  role?: string;
 }
 
 interface UserProfileProps {
@@ -24,22 +26,47 @@ export const UserProfile: React.FC<UserProfileProps> = ({ onUpdate, showToast })
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchProfile();
-  }, []);
+    const user = auth.currentUser;
+    if (!user) return;
 
-  const fetchProfile = async () => {
-    try {
-      const res = await fetch('/api/user/profile');
-      if (!res.ok) throw new Error("Failed to fetch");
-      const data = await res.json();
-      setProfile(data);
-    } catch (err) {
-      console.error("Failed to fetch profile:", err);
-      showToast("Failed to load profile data.");
-    }
-  };
+    const profileRef = doc(db, 'user_profiles', user.uid);
+    const unsubscribe = onSnapshot(profileRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as ProfileData;
+        setProfile(data);
+        onUpdate(data.name);
+      } else {
+        // Initialize profile if it doesn't exist
+        const initialProfile: ProfileData = {
+          name: user.displayName || 'User',
+          age: 28,
+          gender: 'Male',
+          weight: 72,
+          height: 178,
+          activity_level: 'Moderate',
+          diet_type: 'Balanced',
+          allergies: 'None',
+          goal: 'Optimize metabolic efficiency and longevity',
+          updated_at: new Date().toISOString(),
+          role: 'user'
+        };
+        setDoc(profileRef, {
+          ...initialProfile,
+          uid: user.uid,
+          updated_at: serverTimestamp()
+        }).catch(err => handleFirestoreError(err, OperationType.CREATE, `user_profiles/${user.uid}`));
+        setProfile(initialProfile);
+      }
+      setIsLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `user_profiles/${user.uid}`);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const calculateBMI = () => {
     if (!profile?.weight || !profile?.height) return "0.0";
@@ -60,17 +87,21 @@ export const UserProfile: React.FC<UserProfileProps> = ({ onUpdate, showToast })
     e.preventDefault();
     if (!profile) return;
     setIsSaving(true);
+
+    const user = auth.currentUser;
+    if (!user) return;
+
     try {
-      const res = await fetch('/api/user/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profile),
-      });
-      if (res.ok) {
-        onUpdate(profile.name);
-        showToast("Profile updated successfully.");
-      }
-    } catch (err) {
+      const profileRef = doc(db, 'user_profiles', user.uid);
+      await setDoc(profileRef, {
+        ...profile,
+        updated_at: serverTimestamp()
+      }, { merge: true });
+      setIsEditingName(false);
+      onUpdate(profile.name);
+      showToast("Profile updated successfully.");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `user_profiles/${user.uid}`);
       showToast("Failed to update profile.");
     } finally {
       setIsSaving(false);

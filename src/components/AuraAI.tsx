@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Send, Loader2, Brain, Activity, Heart, ShieldCheck } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { getHealthTrackingAdvice } from '../services/healthAiService';
+import { auth, db, collection, query, where, getDocs, orderBy, limit, handleFirestoreError, OperationType, doc, getDoc } from '../firebase';
 
 interface Message {
   role: 'user' | 'model';
@@ -27,12 +28,30 @@ export const AuraAI: React.FC = () => {
   }, [messages]);
 
   const fetchHealthSummary = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
     try {
-      const res = await fetch('/api/health/summary');
-      const data = await res.json();
-      setHealthData(data);
+      // Fetch profile
+      const profileSnap = await getDoc(doc(db, 'user_profiles', user.uid));
+      const profile = profileSnap.exists() ? profileSnap.data() : {};
+
+      // Fetch recent meals
+      const mealsQuery = query(
+        collection(db, 'meals'),
+        where('uid', '==', user.uid),
+        orderBy('created_at', 'desc'),
+        limit(10)
+      );
+      const mealsSnap = await getDocs(mealsQuery);
+      const meals = mealsSnap.docs.map(doc => doc.data());
+
+      // Mock biometrics
+      const biometrics = { heartRate: 72, metabolicRate: 1450 };
+
+      setHealthData({ profile, meals, biometrics });
     } catch (err) {
-      console.error("Failed to fetch health summary:", err);
+      handleFirestoreError(err, OperationType.GET, 'health_summary');
     }
   };
 

@@ -1,0 +1,216 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: user_profiles
+    // Document ID: userId
+    // Fields:
+    //   - uid: string (required, immutable) - User's unique ID
+    //   - name: string (required, max 100) - Full name
+    //   - age: int (required, 0-120) - User age
+    //   - weight: number (required, positive) - Weight in kg
+    //   - height: number (required, positive) - Height in cm
+    //   - gender: string (required, enum) - Male, Female, Other
+    //   - activity_level: string (required, enum) - Sedentary, Light, Moderate, Active, Very Active
+    //   - goal: string (optional, max 500) - Health goal
+    //   - diet_type: string (optional, enum) - Balanced, Vegetarian, Vegan, Ketogenic, Paleo, Mediterranean
+    //   - allergies: string (optional, max 200) - Allergies
+    //   - updated_at: timestamp (required) - Last update time
+    //
+    // Collection: meals
+    // Document ID: auto-generated
+    // Fields:
+    //   - uid: string (required, immutable) - User's unique ID
+    //   - foodName: string (required, max 100) - Name of food
+    //   - calories: number (required, positive) - Calories
+    //   - protein: number (optional, positive) - Protein in grams
+    //   - carbs: number (optional, positive) - Carbs in grams
+    //   - fat: number (optional, positive) - Fat in grams
+    //   - healthInsights: string (optional, max 1000) - AI insights
+    //   - predictiveRisk: string (optional, max 100) - AI risk assessment
+    //   - created_at: timestamp (required) - Creation time
+    //
+    // Collection: notifications
+    // Document ID: auto-generated
+    // Fields:
+    //   - uid: string (required, immutable) - User's unique ID
+    //   - title: string (required, max 100) - Notification title
+    //   - message: string (required, max 500) - Notification message
+    //   - type: string (required, enum) - info, warning, error
+    //   - is_read: bool (required) - Read status
+    //   - created_at: timestamp (required) - Creation time
+    //
+    // Collection: interventions
+    // Document ID: auto-generated
+    // Fields:
+    //   - uid: string (required, immutable) - User's unique ID
+    //   - title: string (required, max 100) - Intervention title
+    //   - type: string (required, max 100) - Intervention type
+    //   - status: string (required, enum) - Active, Completed
+    //   - created_at: timestamp (required) - Creation time
+    //
+    // Collection: cohorts
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required, max 100) - Cohort name
+    //   - deficiency_risk: number (required, 0-100) - Risk percentage
+    //   - metabolic_efficiency: number (required, 0-100) - Efficiency percentage
+    //
+    // Collection: rda_standards
+    // Document ID: auto-generated
+    // Fields:
+    //   - age_group: string (required, max 50) - Age group name
+    //   - nutrient: string (required, max 50) - Nutrient name
+    //   - value: number (required, positive) - Current value
+    //   - rda: number (required, positive) - RDA value
+    //   - unit: string (required, max 10) - Unit (mg, mcg, etc.)
+    //
+    // Collection: intervention_types
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required, max 100) - Type name
+    //   - description: string (required, max 500) - Description
+    //   - target_metrics: list (required, max 10 items) - Targeted metrics
+    //   - created_at: timestamp (required) - Creation time
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "charanchowdary342@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidString(field, maxLen) {
+      return request.resource.data[field] is string && request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidNumber(field) {
+      return request.resource.data[field] is number;
+    }
+
+    function isPositive(field) {
+      return isValidNumber(field) && request.resource.data[field] >= 0;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUserProfile(data) {
+      return hasRequiredFields(['uid', 'name', 'age', 'weight', 'height', 'gender', 'updated_at']) &&
+             hasOnlyAllowedFields(['uid', 'name', 'age', 'weight', 'height', 'gender', 'activity_level', 'goal', 'diet_type', 'allergies', 'updated_at', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.name is string && data.name.size() <= 100 &&
+             data.age is int && data.age >= 0 && data.age <= 120 &&
+             data.weight is number && data.weight >= 0 &&
+             data.height is number && data.height >= 0 &&
+             data.gender in ['Male', 'Female', 'Other'] &&
+             (!('activity_level' in data) || data.activity_level in ['Sedentary', 'Light', 'Moderate', 'Active', 'Very Active']) &&
+             (!('diet_type' in data) || data.diet_type in ['Balanced', 'Vegetarian', 'Vegan', 'Ketogenic', 'Paleo', 'Mediterranean']) &&
+             (!('role' in data) || data.role == 'user' || isAdmin());
+    }
+
+    function isValidMeal(data) {
+      return hasRequiredFields(['uid', 'foodName', 'calories', 'created_at']) &&
+             hasOnlyAllowedFields(['uid', 'foodName', 'calories', 'protein', 'carbs', 'fat', 'healthInsights', 'predictiveRisk', 'created_at', 'macronutrients', 'micronutrients']) &&
+             data.uid == request.auth.uid &&
+             data.foodName is string && data.foodName.size() <= 100 &&
+             data.calories is number && data.calories >= 0 &&
+             (!('protein' in data) || data.protein is number) &&
+             (!('carbs' in data) || data.carbs is number) &&
+             (!('fat' in data) || data.fat is number);
+    }
+
+    function isValidNotification(data) {
+      return hasRequiredFields(['uid', 'title', 'message', 'type', 'is_read', 'created_at']) &&
+             data.uid == request.auth.uid &&
+             data.type in ['info', 'warning', 'error'] &&
+             data.is_read is bool;
+    }
+
+    function isValidIntervention(data) {
+      return hasRequiredFields(['uid', 'title', 'type', 'status', 'created_at']) &&
+             data.uid == request.auth.uid &&
+             data.status in ['Active', 'Completed'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /user_profiles/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data) && (!('role' in request.resource.data) || request.resource.data.role == 'user');
+      allow update: if isOwner(userId) && isValidUserProfile(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /meals/{mealId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && isValidMeal(request.resource.data);
+      allow update: if isDocOwner() && isValidMeal(request.resource.data);
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow update: if isDocOwner() && isValidNotification(request.resource.data);
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /interventions/{interventionId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && isValidIntervention(request.resource.data);
+      allow update: if isDocOwner() && isValidIntervention(request.resource.data);
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /cohorts/{cohortId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /rda_standards/{rdaId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /intervention_types/{typeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
