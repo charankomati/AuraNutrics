@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Send, Loader2, Brain, Activity, Heart, ShieldCheck } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { getHealthTrackingAdvice } from '../services/healthAiService';
