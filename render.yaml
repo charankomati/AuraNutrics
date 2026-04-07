@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: auranutrics
+    runtime: node
+    buildCommand: npm run build
+    startCommand: npm start
+    source: .
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+    port: 3000
