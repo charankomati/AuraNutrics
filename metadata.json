@@ -1,0 +1,5 @@
+{
+  "name": "AuraNutrics",
+  "description": "Predictive pediatric nutrition ecosystem with computer-vision ingestion and metabolic intelligence.",
+  "requestFramePermissions": ["camera"]
+}
