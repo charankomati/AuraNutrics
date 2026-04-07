@@ -4,7 +4,6 @@ services:
     runtime: node
     buildCommand: npm run build
     startCommand: npm start
-    source: .
     envVars:
       - key: GEMINI_API_KEY
         fromSecret: GEMINI_API_KEY
