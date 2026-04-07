@@ -5,7 +5,5 @@ services:
     buildCommand: npm run build
     startCommand: npm start
     envVars:
-      - key: GEMINI_API_KEY
-        fromSecret: GEMINI_API_KEY
       - key: NODE_ENV
         value: production
