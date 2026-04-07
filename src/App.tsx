@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { LayoutDashboard, Camera, Sparkles, ShieldCheck, Settings, Bell, Search, User, X, CheckCircle, LogOut } from 'lucide-react';
+import { LayoutDashboard, Camera, Sparkles, ShieldCheck, Settings, Bell, Search, User, X, CheckCircle, LogOut, Menu } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { VisionIngestion } from './components/VisionIngestion';
 import { AdminCenter } from './components/AdminCenter';
@@ -23,6 +23,7 @@ export default function App() {
   const [settings, setSettings] = useState<any>({ age_group: 'pediatric' });
   const [toast, setToast] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -179,9 +180,17 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex bg-aura-bg">
-      {/* Sidebar Navigation */}
-      <nav className="w-24 border-r border-aura-ink/5 flex flex-col items-center py-12 space-y-12 fixed h-full bg-aura-card z-50">
+    <div className="min-h-screen flex flex-col md:flex-row bg-aura-bg">
+      {/* Mobile Menu Button */}
+      <button 
+        onClick={() => setShowMobileMenu(!showMobileMenu)}
+        className="md:hidden fixed top-6 left-6 z-[51] p-2 bg-aura-card rounded-xl text-aura-gold border border-aura-ink/10"
+      >
+        <Menu size={24} strokeWidth={1.5} />
+      </button>
+
+      {/* Sidebar Navigation - Desktop */}
+      <nav className="hidden md:flex w-24 border-r border-aura-ink/5 flex-col items-center py-12 space-y-12 fixed h-full bg-aura-card z-50">
         <div className="w-12 h-12 rounded-2xl bg-aura-ink flex items-center justify-center text-aura-bg font-serif text-2xl shadow-xl shadow-black/40">
           A
         </div>
@@ -217,10 +226,77 @@ export default function App() {
         </button>
       </nav>
 
+      {/* Mobile Sidebar Navigation */}
+      <AnimatePresence>
+        {showMobileMenu && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMobileMenu(false)}
+              className="md:hidden fixed inset-0 bg-black/40 z-[49]"
+            />
+            <motion.nav 
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              className="md:hidden fixed left-0 top-0 h-full w-64 bg-aura-card border-r border-aura-ink/5 flex flex-col py-6 px-6 z-[50]"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <div className="w-10 h-10 rounded-2xl bg-aura-ink flex items-center justify-center text-aura-bg font-serif text-lg shadow-xl shadow-black/40">
+                  A
+                </div>
+                <button 
+                  onClick={() => setShowMobileMenu(false)}
+                  className="p-2 hover:bg-aura-bg rounded-lg transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="flex-1 flex flex-col space-y-2">
+                {[
+                  { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+                  { id: 'vision', icon: Camera, label: 'Vision' },
+                  { id: 'ai', icon: Sparkles, label: 'AI Assistant' },
+                  { id: 'admin', icon: ShieldCheck, label: 'Admin' },
+                  { id: 'profile', icon: User, label: 'Profile' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveView(item.id as View);
+                      setShowMobileMenu(false);
+                    }}
+                    className={`w-full flex items-center space-x-4 p-4 rounded-xl transition-all duration-300 ${
+                      activeView === item.id 
+                        ? 'bg-aura-bg text-aura-gold' 
+                        : 'text-aura-muted hover:text-aura-gold hover:bg-aura-bg/30'
+                    }`}
+                  >
+                    <item.icon size={20} strokeWidth={1.5} />
+                    <span className="text-sm font-medium">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <button 
+                onClick={handleLogout}
+                className="w-full flex items-center space-x-4 p-4 text-aura-muted hover:text-rose-500 transition-colors rounded-xl hover:bg-aura-bg/30"
+              >
+                <LogOut size={20} strokeWidth={1.5} />
+                <span className="text-sm font-medium">Logout</span>
+              </button>
+            </motion.nav>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Main Content Area */}
-      <main className="flex-1 ml-24 p-12 max-w-7xl mx-auto w-full">
+      <main className="flex-1 md:ml-24 p-6 md:p-12 max-w-7xl mx-auto w-full mt-16 md:mt-0">
         {/* Top Header */}
-        <header className="flex justify-between items-center mb-16">
+        <header className="flex flex-col md:flex-row justify-between gap-6 md:gap-0 md:items-center mb-8 md:mb-16">
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-aura-muted group-focus-within:text-aura-ink transition-colors" size={18} />
             <input 
@@ -228,11 +304,11 @@ export default function App() {
               placeholder="Search health metrics..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-12 pr-6 py-3 rounded-full bg-aura-card border border-aura-ink/5 focus:outline-none focus:ring-2 focus:ring-aura-accent/20 w-80 transition-all text-sm text-aura-ink"
+              className="w-full md:w-80 pl-12 pr-6 py-3 rounded-full bg-aura-card border border-aura-ink/5 focus:outline-none focus:ring-2 focus:ring-aura-accent/20 transition-all text-sm text-aura-ink"
             />
           </div>
 
-          <div className="flex items-center space-x-6">
+          <div className="flex items-center justify-between md:justify-end md:space-x-6 gap-4 md:gap-6">
             <div className="relative">
               <button 
                 onClick={() => {
@@ -253,7 +329,7 @@ export default function App() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 10 }}
-                    className="absolute right-0 mt-4 w-80 luxury-card z-50 p-4 bg-aura-card"
+                    className="absolute right-0 mt-4 w-80 max-w-[90vw] luxury-card z-50 p-4 bg-aura-card"
                   >
                     <div className="flex justify-between items-center mb-4 border-b border-aura-ink/5 pb-2">
                       <h4 className="font-serif text-lg">Notifications</h4>
@@ -275,7 +351,7 @@ export default function App() {
             </div>
             <div 
               onClick={() => setActiveView('profile')}
-              className="flex items-center space-x-4 pl-6 border-l border-aura-ink/10 cursor-pointer group"
+              className="hidden sm:flex items-center space-x-4 pl-4 md:pl-6 border-l border-aura-ink/10 cursor-pointer group"
             >
               <div className="text-right">
                 <p className="text-sm font-semibold group-hover:text-aura-gold transition-colors">{user.displayName || 'User'}</p>
@@ -285,6 +361,12 @@ export default function App() {
                 <User size={20} />
               </div>
             </div>
+            <button 
+              onClick={() => setActiveView('profile')}
+              className="sm:hidden p-2 text-aura-gold hover:bg-aura-bg rounded-lg transition-colors"
+            >
+              <User size={24} strokeWidth={1.5} />
+            </button>
           </div>
         </header>
 
