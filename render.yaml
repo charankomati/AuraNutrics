@@ -7,7 +7,6 @@ services:
     source: .
     envVars:
       - key: GEMINI_API_KEY
-        sync: false
+        fromSecret: GEMINI_API_KEY
       - key: NODE_ENV
         value: production
-    port: 3000
