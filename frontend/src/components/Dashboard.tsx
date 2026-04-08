@@ -29,6 +29,7 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ searchQuery = '', onIntervention }) => {
   const [meals, setMeals] = useState<any[]>([]);
   const [biometrics, setBiometrics] = useState<any>(null);
+  const [biometricHistory, setBiometricHistory] = useState<Array<{ heartRate: number; metabolicRate: number }>>([]);
   const [recentInterventions, setRecentInterventions] = useState<any[]>([]);
   const [interventionTypes, setInterventionTypes] = useState<any[]>([]);
   
@@ -131,26 +132,84 @@ export const Dashboard: React.FC<DashboardProps> = ({ searchQuery = '', onInterv
   useEffect(() => {
     // Keep biometrics as mock for now or fetch from a service
     const fetchBiometrics = async () => {
-      // Mock biometrics
-      setBiometrics({
+      const nextBiometrics = {
         heartRate: 68 + Math.floor(Math.random() * 10),
         metabolicRate: 1400 + Math.floor(Math.random() * 200)
-      });
+      };
+      setBiometrics(nextBiometrics);
+      setBiometricHistory((history) => [
+        nextBiometrics,
+        ...history.slice(0, 11)
+      ]);
     };
     fetchBiometrics();
     const interval = setInterval(fetchBiometrics, 5000);
     return () => clearInterval(interval);
   }, []);
 
+  const averageHeartRate = biometricHistory.length > 0
+    ? Math.round(biometricHistory.reduce((sum, item) => sum + item.heartRate, 0) / biometricHistory.length)
+    : biometrics?.heartRate ?? 72;
+
+  const averageIntake = meals.length > 0
+    ? meals.reduce((sum, meal) => sum + (meal.calories || 0), 0) / meals.length
+    : 1800;
+
+  const averageRisk = meals.length > 0
+    ? meals.reduce((sum, meal) => {
+        const risk = (meal.predictiveRisk || '').toString().toLowerCase();
+        if (risk.includes('deficiency')) return sum + 32;
+        if (risk.includes('high')) return sum + 24;
+        if (risk.includes('moderate')) return sum + 14;
+        if (risk.includes('low')) return sum + 6;
+        return sum + 16;
+      }, 0) / meals.length
+    : 12;
+
+  const averageNutrientBreadth = meals.length > 0
+    ? meals.reduce((sum, meal) => sum + (meal.nutrients ? Object.keys(meal.nutrients).length : 0), 0) / meals.length
+    : 5;
+
+  const averageProteinRatio = meals.length > 0
+    ? meals.reduce((sum, meal) => {
+        const proteinValue = meal.macronutrients?.protein ?? meal.nutrients?.protein;
+        const proteinGrams = typeof proteinValue === 'number'
+          ? proteinValue
+          : typeof proteinValue === 'string'
+            ? parseFloat(proteinValue.replace(/[^\d.]/g, '')) || 0
+            : 0;
+        return sum + proteinGrams / Math.max(1, meal.calories || 1);
+      }, 0) / meals.length
+    : 0.12;
+
+  const energyBalance = averageIntake / Math.max(1, biometrics?.metabolicRate ?? 1500);
+  const demandAlignment = 1 - Math.min(1, Math.abs(1 - energyBalance));
+  const rawMetabolicEfficiency = 70 + demandAlignment * 16 - averageRisk * 0.35 + averageNutrientBreadth * 1.5;
+  const metabolicEfficiency = Math.round(Math.min(98, Math.max(56, rawMetabolicEfficiency)));
+
+  const rawNutrientDensity = 70 + averageNutrientBreadth * 2.4 + averageProteinRatio * 120 - averageRisk * 0.4 + (averageRisk <= 10 ? 6 : 0);
+  const nutrientDensityScore = Math.round(Math.min(98, Math.max(56, rawNutrientDensity)));
+  const nutrientDensityGrade = nutrientDensityScore >= 92 ? 'A'
+    : nutrientDensityScore >= 86 ? 'A-'
+    : nutrientDensityScore >= 80 ? 'B+'
+    : nutrientDensityScore >= 72 ? 'B'
+    : 'C';
+
+  const activeBurn = (() => {
+    const base = biometrics?.metabolicRate ?? 1450;
+    const adjustment = Math.round((averageIntake - base) * 0.12);
+    return Math.round(Math.min(base + 140, Math.max(base - 90, base + adjustment)));
+  })();
+
   return (
     <div className="space-y-8">
       {/* Hero Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
-          { label: 'Metabolic Efficiency', value: '94%', icon: Zap, color: 'text-emerald-600' },
-          { label: 'Nutrient Density', value: 'A-', icon: ShieldCheck, color: 'text-aura-accent' },
-          { label: 'Heart Rate (Avg)', value: biometrics ? `${biometrics.heartRate} bpm` : '72 bpm', icon: Heart, color: 'text-rose-500' },
-          { label: 'Active Burn', value: biometrics ? `${biometrics.metabolicRate} kcal` : '1450 kcal', icon: Activity, color: 'text-blue-500' },
+          { label: 'Metabolic Efficiency', value: `${metabolicEfficiency}%`, icon: Zap, color: 'text-emerald-600' },
+          { label: 'Nutrient Density', value: nutrientDensityGrade, icon: ShieldCheck, color: 'text-aura-accent' },
+          { label: 'Heart Rate (Avg)', value: `${averageHeartRate} bpm`, icon: Heart, color: 'text-rose-500' },
+          { label: 'Active Burn', value: `${activeBurn} kcal`, icon: Activity, color: 'text-blue-500' },
         ].map((stat, i) => (
           <motion.div 
             key={stat.label}

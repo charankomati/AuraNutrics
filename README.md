@@ -6,6 +6,8 @@
 
 This contains everything you need to run your app locally.
 
+The project is now organized with a separate `frontend/` React app and `backend/` Express API.
+
 View your app in AI Studio: https://ai.studio/apps/8ca54d8e-413a-4676-81c4-bfda4398a98f
 
 ## Run Locally
